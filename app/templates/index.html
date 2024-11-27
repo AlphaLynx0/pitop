@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pitop - System Metrics Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
     <style>
         :root {
             --bg-primary: #f4f4f4;
             --bg-card: white;
             --text-primary: #333;
             --accent-color: #4a90e2;
-            --warning-color: #f39c12;
-            --danger-color: #e74c3c;
+            --text-muted: #666;
         }
 
         * {
@@ -30,9 +30,9 @@
 
         .dashboard {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
             gap: 20px;
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
@@ -41,146 +41,220 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             padding: 20px;
-            text-align: center;
-            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
         }
 
-        .metric-card:hover {
-            transform: translateY(-5px);
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
         }
 
         .metric-title {
             font-size: 1rem;
             color: var(--accent-color);
-            margin-bottom: 10px;
             text-transform: uppercase;
-        }
-
-        .metric-value {
-            font-size: 1.8rem;
             font-weight: bold;
         }
 
-        .progress-bar {
+        .metric-current {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
             width: 100%;
-            height: 10px;
-            background-color: #e0e0e0;
-            border-radius: 5px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill {
-            height: 100%;
-            border-radius: 5px;
-            transition: width 0.5s ease-in-out;
-        }
-
-        .status-good {
-            background-color: var(--accent-color);
-            color: white;
-        }
-
-        .status-warning {
-            background-color: var(--warning-color);
-            color: white;
-        }
-
-        .status-danger {
-            background-color: var(--danger-color);
-            color: white;
         }
     </style>
 </head>
 <body>
     <div class="dashboard">
-        <div id="cpu-card" class="metric-card">
-            <h2 class="metric-title">CPU Usage</h2>
-            <div class="metric-value" id="cpu-value">--%</div>
-            <div class="progress-bar">
-                <div id="cpu-progress" class="progress-bar-fill"></div>
+        <div class="metric-card">
+            <div class="metric-header">
+                <h2 class="metric-title">CPU Usage</h2>
+                <span class="metric-current" id="cpu-current">0%</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="cpu-chart"></canvas>
             </div>
         </div>
 
-        <div id="memory-card" class="metric-card">
-            <h2 class="metric-title">Memory Usage</h2>
-            <div class="metric-value" id="memory-value">--%</div>
-            <div class="progress-bar">
-                <div id="memory-progress" class="progress-bar-fill"></div>
+        <div class="metric-card">
+            <div class="metric-header">
+                <h2 class="metric-title">Memory Usage</h2>
+                <span class="metric-current" id="memory-current">0%</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="memory-chart"></canvas>
             </div>
         </div>
 
-        <div id="disk-card" class="metric-card">
-            <h2 class="metric-title">Disk Usage</h2>
-            <div class="metric-value" id="disk-value">--%</div>
-            <div class="progress-bar">
-                <div id="disk-progress" class="progress-bar-fill"></div>
+        <div class="metric-card">
+            <div class="metric-header">
+                <h2 class="metric-title">Network I/O</h2>
+                <span class="metric-current" id="network-current">0 B/s</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="network-chart"></canvas>
             </div>
         </div>
 
-        <div id="network-card" class="metric-card">
-            <h2 class="metric-title">Network I/O</h2>
-            <div class="metric-value">
-                <span id="network-sent">0 B</span> / 
-                <span id="network-recv">0 B</span>
+        <div class="metric-card">
+            <div class="metric-header">
+                <h2 class="metric-title">Disk I/O</h2>
+                <span class="metric-current" id="disk-current">0 B/s</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="disk-chart"></canvas>
             </div>
         </div>
     </div>
 
     <script>
+        // Store historical data with timestamps
+        const metricsHistory = {
+            cpu: { labels: [], data: [] },
+            memory: { labels: [], data: [] },
+            network: { labels: [], data: [] },
+            disk: { labels: [], data: [] }
+        };
+
+        // Format time for X-axis
+        function formatTime(date) {
+            return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        }
+
+        // Chart configuration helper
+        function createChart(canvasId, label, color, yAxisLabel) {
+            return new Chart(document.getElementById(canvasId), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        borderColor: color,
+                        backgroundColor: color + '33', // Semi-transparent
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: color
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: yAxisLabel,
+                                color: '#666',
+                                font: {
+                                    size: 12,
+                                    weight: 'normal'
+                                }
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#666'
+                            },
+                            grid: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time',
+                                color: '#666',
+                                font: {
+                                    size: 12,
+                                    weight: 'normal'
+                                }
+                            },
+                            ticks: {
+                                color: '#666',
+                                autoSkip: true,
+                                maxTicksLimit: 5
+                            },
+                            grid: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize charts
+        const cpuChart = createChart('cpu-chart', 'CPU', '#4a90e2', 'Usage (%)');
+        const memoryChart = createChart('memory-chart', 'Memory', '#2ecc71', 'Usage (%)');
+        const networkChart = createChart('network-chart', 'Network', '#e74c3c', 'Throughput (MB/s)');
+        const diskChart = createChart('disk-chart', 'Disk', '#f39c12', 'Throughput (MB/s)');
+
         // Utility function to format bytes
         function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 Bytes';
+            if (bytes === 0) return '0 B';
             const k = 1024;
             const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
+        // Update chart with new data point
+        function updateChart(chart, historyObj, value) {
+            const now = new Date();
+            const timeLabel = formatTime(now);
+
+            // Keep only last 15 data points
+            if (historyObj.labels.length >= 15) {
+                historyObj.labels.shift();
+                historyObj.data.shift();
+            }
+
+            historyObj.labels.push(timeLabel);
+            historyObj.data.push(value);
+
+            // Update chart data
+            chart.data.labels = historyObj.labels;
+            chart.data.datasets[0].data = historyObj.data;
+            chart.update('none');
+        }
+
         // Function to update UI with metrics
         function updateMetrics(metrics) {
-            // CPU Card
-            const cpuCard = document.getElementById('cpu-card');
-            const cpuValue = document.getElementById('cpu-value');
-            const cpuProgress = document.getElementById('cpu-progress');
-            cpuValue.textContent = `${metrics.cpu_percent}%`;
-            cpuProgress.style.width = `${metrics.cpu_percent}%`;
-            cpuProgress.className = `progress-bar-fill ${
-                metrics.cpu_percent < 50 ? 'status-good' : 
-                metrics.cpu_percent < 80 ? 'status-warning' : 
-                'status-danger'
-            }`;
+            // CPU
+            const cpuCurrent = document.getElementById('cpu-current');
+            cpuCurrent.textContent = `${metrics.cpu_percent}%`;
+            updateChart(cpuChart, metricsHistory.cpu, metrics.cpu_percent);
 
-            // Memory Card
-            const memoryValue = document.getElementById('memory-value');
-            const memoryProgress = document.getElementById('memory-progress');
-            const memoryPercent = metrics.memory_percent;
-            memoryValue.textContent = `${memoryPercent}%`;
-            memoryProgress.style.width = `${memoryPercent}%`;
-            memoryProgress.className = `progress-bar-fill ${
-                memoryPercent < 50 ? 'status-good' : 
-                memoryPercent < 80 ? 'status-warning' : 
-                'status-danger'
-            }`;
+            // Memory
+            const memoryCurrent = document.getElementById('memory-current');
+            memoryCurrent.textContent = `${metrics.memory_percent}%`;
+            updateChart(memoryChart, metricsHistory.memory, metrics.memory_percent);
 
-            // Disk Card
-            const diskValue = document.getElementById('disk-value');
-            const diskProgress = document.getElementById('disk-progress');
-            const diskPercent = metrics.disk_percent;
-            diskValue.textContent = `${diskPercent}%`;
-            diskProgress.style.width = `${diskPercent}%`;
-            diskProgress.className = `progress-bar-fill ${
-                diskPercent < 50 ? 'status-good' : 
-                diskPercent < 80 ? 'status-warning' : 
-                'status-danger'
-            }`;
+            // Network (calculate bytes per second)
+            const networkCurrent = document.getElementById('network-current');
+            const networkBytesPerSec = metrics.io_sent + metrics.io_recv;
+            const networkMbPerSec = networkBytesPerSec / (1024 * 1024);
+            networkCurrent.textContent = formatBytes(networkBytesPerSec) + '/s';
+            updateChart(networkChart, metricsHistory.network, networkMbPerSec);
 
-            // Network Card
-            const networkSent = document.getElementById('network-sent');
-            const networkRecv = document.getElementById('network-recv');
-            networkSent.textContent = formatBytes(metrics.io_sent);
-            networkRecv.textContent = formatBytes(metrics.io_recv);
+            // Disk I/O 
+            const diskCurrent = document.getElementById('disk-current');
+            const diskBytesPerSec = metrics.io_sent;
+            const diskMbPerSec = diskBytesPerSec / (1024 * 1024);
+            diskCurrent.textContent = formatBytes(diskBytesPerSec) + '/s';
+            updateChart(diskChart, metricsHistory.disk, diskMbPerSec);
         }
 
         // Fetch metrics periodically
@@ -193,7 +267,7 @@
 
         // Initial fetch and set up periodic updates
         fetchMetrics();
-        setInterval(fetchMetrics, 5000); // Update every 5 seconds
+        setInterval(fetchMetrics, 2000); // Update every 5 seconds
     </script>
 </body>
 </html>
