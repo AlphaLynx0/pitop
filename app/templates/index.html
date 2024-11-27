@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitop - System Metrics Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #f4f4f4;
+            --bg-card: white;
+            --text-primary: #333;
+            --accent-color: #4a90e2;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .metric-card {
+            background-color: var(--bg-card);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .metric-title {
+            font-size: 1rem;
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.5s ease-in-out;
+        }
+
+        .status-good {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .status-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+
+        .status-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div id="cpu-card" class="metric-card">
+            <h2 class="metric-title">CPU Usage</h2>
+            <div class="metric-value" id="cpu-value">--%</div>
+            <div class="progress-bar">
+                <div id="cpu-progress" class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <div id="memory-card" class="metric-card">
+            <h2 class="metric-title">Memory Usage</h2>
+            <div class="metric-value" id="memory-value">--%</div>
+            <div class="progress-bar">
+                <div id="memory-progress" class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <div id="disk-card" class="metric-card">
+            <h2 class="metric-title">Disk Usage</h2>
+            <div class="metric-value" id="disk-value">--%</div>
+            <div class="progress-bar">
+                <div id="disk-progress" class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <div id="network-card" class="metric-card">
+            <h2 class="metric-title">Network I/O</h2>
+            <div class="metric-value">
+                <span id="network-sent">0 B</span> / 
+                <span id="network-recv">0 B</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Utility function to format bytes
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // Function to update UI with metrics
+        function updateMetrics(metrics) {
+            // CPU Card
+            const cpuCard = document.getElementById('cpu-card');
+            const cpuValue = document.getElementById('cpu-value');
+            const cpuProgress = document.getElementById('cpu-progress');
+            cpuValue.textContent = `${metrics.cpu_percent}%`;
+            cpuProgress.style.width = `${metrics.cpu_percent}%`;
+            cpuProgress.className = `progress-bar-fill ${
+                metrics.cpu_percent < 50 ? 'status-good' : 
+                metrics.cpu_percent < 80 ? 'status-warning' : 
+                'status-danger'
+            }`;
+
+            // Memory Card
+            const memoryValue = document.getElementById('memory-value');
+            const memoryProgress = document.getElementById('memory-progress');
+            const memoryPercent = metrics.memory_percent;
+            memoryValue.textContent = `${memoryPercent}%`;
+            memoryProgress.style.width = `${memoryPercent}%`;
+            memoryProgress.className = `progress-bar-fill ${
+                memoryPercent < 50 ? 'status-good' : 
+                memoryPercent < 80 ? 'status-warning' : 
+                'status-danger'
+            }`;
+
+            // Disk Card
+            const diskValue = document.getElementById('disk-value');
+            const diskProgress = document.getElementById('disk-progress');
+            const diskPercent = metrics.disk_percent;
+            diskValue.textContent = `${diskPercent}%`;
+            diskProgress.style.width = `${diskPercent}%`;
+            diskProgress.className = `progress-bar-fill ${
+                diskPercent < 50 ? 'status-good' : 
+                diskPercent < 80 ? 'status-warning' : 
+                'status-danger'
+            }`;
+
+            // Network Card
+            const networkSent = document.getElementById('network-sent');
+            const networkRecv = document.getElementById('network-recv');
+            networkSent.textContent = formatBytes(metrics.io_sent);
+            networkRecv.textContent = formatBytes(metrics.io_recv);
+        }
+
+        // Fetch metrics periodically
+        function fetchMetrics() {
+            fetch('/api/metrics')
+                .then(response => response.json())
+                .then(updateMetrics)
+                .catch(error => console.error('Error fetching metrics:', error));
+        }
+
+        // Initial fetch and set up periodic updates
+        fetchMetrics();
+        setInterval(fetchMetrics, 5000); // Update every 5 seconds
+    </script>
+</body>
+</html>
